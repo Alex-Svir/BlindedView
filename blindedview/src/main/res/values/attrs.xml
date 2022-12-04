@@ -1,15 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <declare-styleable name="BlindedView">
+    <declare-styleable name="AbsBlindedView">
         <attr name="blindWidth" format="float"/>
         <attr name="latchRelease" format="float"/>
         <attr name="drawableLeft" format="reference"/>
         <attr name="drawableRight" format="reference"/>
-    </declare-styleable>
-    <declare-styleable name="SingleBlindView">
-        <attr name="blindStroke" format="float"/>
-        <attr name="latchRelease2" format="float"/>
-        <attr name="drawableLeft2" format="reference"/>
-        <attr name="drawableRight2" format="reference"/>
     </declare-styleable>
 </resources>

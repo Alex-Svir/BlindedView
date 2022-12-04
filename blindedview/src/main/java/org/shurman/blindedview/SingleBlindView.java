@@ -2,30 +2,21 @@ package org.shurman.blindedview;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
-import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.MotionEvent;
-import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-public class SingleBlindView extends View {
-    private static final float SENSITIVITY = 20f;               //  todo
-    private static final float DEFAULT_BLIND_STROKE = 0.4f;
-    private static final float DEFAULT_LATCH_RELEASE = 0.3f;
-
-
+public class SingleBlindView extends AbsBlindedView {
     private static final int TARGET_BUTTON_L = 1;
     private static final int TARGET_BLIND = 2;
     private static final int TARGET_BUTTON_R = 4;
@@ -38,43 +29,20 @@ public class SingleBlindView extends View {
     private static final int STATE_MASK = 0x30;
     //---------------------------------------------------------------------------
 //  attrs
-    private Drawable mDrawableLeft;
-    private Drawable mDrawableRight;
     private float mLeftBlindAxisSentinelRelative;
     private float mRightBlindAxisSentinelRelative;
     private float mLatchReleaseRelative;
-    //  measured
-    private int mScaledViewWidth;
-    private int mScaledViewHeight;
     //  moving blind variables
     private final Blind mBlind;
     private float mBlindAxisPositionRelative;
     private int mBlindsFlags;
-    private final PointF mRefPoint;
 //--------------------------------------------------------------------------
 
     public SingleBlindView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        TypedArray ta = context.getTheme().obtainStyledAttributes(attrs, R.styleable.SingleBlindView, 0, 0);
-        float blindStroke = DEFAULT_BLIND_STROKE;
-        float latchRelease = DEFAULT_LATCH_RELEASE;
-
-        try {
-            mDrawableLeft = ta.getDrawable(R.styleable.SingleBlindView_drawableLeft2);
-            mDrawableRight = ta.getDrawable(R.styleable.SingleBlindView_drawableRight2);
-            blindStroke = ta.getFloat(R.styleable.SingleBlindView_blindStroke, DEFAULT_BLIND_STROKE);
-            latchRelease = ta.getFloat(R.styleable.SingleBlindView_latchRelease2, DEFAULT_LATCH_RELEASE);
-        } catch (RuntimeException e) { l(e.toString()); }
-
-        assert 0f < blindStroke && blindStroke <= 0.5f : "Illegal blindWidth";
-        mLeftBlindAxisSentinelRelative = 0.5f - blindStroke;
-        mRightBlindAxisSentinelRelative = 0.5f + blindStroke;
-        assert 0f <= latchRelease && latchRelease <= 1f;
-        mLatchReleaseRelative = blindStroke * latchRelease;
 
         mBlindAxisPositionRelative = 0.5f;
         mBlindsFlags = 0;
-        mRefPoint = new PointF();
         mBlind = new Blind();
 
         super.setOnClickListener(v -> {
@@ -86,13 +54,24 @@ public class SingleBlindView extends View {
                     l("Button Right callback");//todo
                     break;
                 case TARGET_BLIND:
-                    //mBlindAxisPositionRelative = 0.5f;
                     shut(0.5f);
-                    //__refreshCorrectly();
                     break;
                 default:
                     throw new IllegalStateException("Illegal state at performClick()");
             }});
+    }
+
+    @Override
+    public void setBlindWidth(float blindWidth) {
+        super.setBlindWidth(blindWidth);
+        mLeftBlindAxisSentinelRelative = 0.5f - blindWidth;
+        mRightBlindAxisSentinelRelative = 0.5f + blindWidth;
+    }
+
+    @Override
+    public void setLatchRelease(float latchRelease) {
+        super.setLatchRelease(latchRelease);
+        mLatchReleaseRelative = getBlindWidth() * latchRelease;
     }
 
     @Override
@@ -103,20 +82,14 @@ public class SingleBlindView extends View {
             canvas.drawColor(Color.YELLOW);
 
         if (mDrawableLeft != null) mDrawableLeft.draw(canvas);
-        else l("Left null");
         if (mDrawableRight != null) mDrawableRight.draw(canvas);
-        else l("Right null");
 
         mBlind.draw(canvas);
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        //l("Measures provided: " + MeasureSpec.toString(widthMeasureSpec) + "; " + MeasureSpec.toString(heightMeasureSpec));
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        //l("\tMeasured: " + getMeasuredWidth() + "x" + getMeasuredHeight());
-        mScaledViewWidth = getMeasuredWidth();
-        mScaledViewHeight = getMeasuredHeight();
 
         measureIcon(mDrawableLeft, true);
         measureIcon(mDrawableRight, false);
@@ -143,11 +116,11 @@ public class SingleBlindView extends View {
                     case STATE_CLICK:
                         int target = mBlindsFlags & TARGET_MASK;
                         if (target == TARGET_BUTTON_L) {
-                            if (withinRect(x, y, mDrawableLeft.getBounds()))
+                            if (withinIcon(x, y, mDrawableLeft))
                                 performClick();
                             break;
                         } else if (target == TARGET_BUTTON_R) {
-                            if (withinRect(x, y, mDrawableRight.getBounds()))
+                            if (withinIcon(x, y, mDrawableRight))
                                 performClick();
                             break;
                         } else if (target == TARGET_BLIND) {
@@ -202,7 +175,7 @@ public class SingleBlindView extends View {
         float relativeX = x / mScaledViewWidth;
         if (leftSideOpen()) {
             if (relativeX < mBlindAxisPositionRelative - 0.5f) {    //  to the left of blind
-                if (withinRect(x, y, mDrawableLeft.getBounds())) {
+                if (withinIcon(x, y, mDrawableLeft)) {
                     mBlindsFlags = TARGET_BUTTON_L | STATE_CLICK;
                 } else {
                     mBlindsFlags = TARGET_NONE | STATE_NOTHING;
@@ -212,7 +185,7 @@ public class SingleBlindView extends View {
             }
         } else if (rightSideOpen()) {
             if (relativeX > mBlindAxisPositionRelative + 0.5f) {    //  to the right of blind
-                if (withinRect(x, y, mDrawableRight.getBounds())) {
+                if (withinIcon(x, y, mDrawableRight)) {
                     mBlindsFlags = TARGET_BUTTON_R | STATE_CLICK;
                 } else {
                     mBlindsFlags = TARGET_NONE | STATE_NOTHING;
@@ -246,17 +219,6 @@ public class SingleBlindView extends View {
         __refreshCorrectly();
     }
 
-    private boolean underConversionThreshold(float x, float y) {
-        float dx = x - mRefPoint.x;
-        float dy = y - mRefPoint.y;
-        return Math.sqrt(dx * dx + dy * dy) < SENSITIVITY;        //TODO any direction?
-    }
-
-    private void __refreshCorrectly() {
-        invalidate();
-        //requestLayout();
-    }
-
     private void measureIcon(Drawable icon, boolean left) {     //    TODO remeasure with paddings and allowed frame size
         if (icon == null) return;
         int iw = icon.getIntrinsicWidth();
@@ -269,10 +231,6 @@ public class SingleBlindView extends View {
         }
         int bias = left ? 0 : mScaledViewWidth - iw;
         icon.setBounds(bias, 0, iw + bias, h);
-    }
-
-    private static boolean withinRect(float x, float y, Rect area) {
-        return area != null && x >= area.left && x < area.right && y >= area.top && y < area.bottom;
     }
 
     private boolean blindClosed() { return mBlindAxisPositionRelative == 0.5f; }
@@ -352,5 +310,4 @@ public class SingleBlindView extends View {
         public int getOpacity() { return PixelFormat.OPAQUE; }
     }
 
-    private static void l(String text) { Log.d("LOG_TAG::", text); }
 }
