@@ -48,10 +48,12 @@ public class SingleBlindView extends AbsBlindedView {
         super.setOnClickListener(v -> {
             switch (mBlindsFlags & TARGET_MASK) {
                 case TARGET_BUTTON_L:
-                    l("Button Left callback");//todo
+                    if (null != mOnBlindedItemClickListener)
+                        mOnBlindedItemClickListener.onBlindedItemClick(true);
                     break;
                 case TARGET_BUTTON_R:
-                    l("Button Right callback");//todo
+                    if (null != mOnBlindedItemClickListener)
+                        mOnBlindedItemClickListener.onBlindedItemClick(false);
                     break;
                 case TARGET_BLIND:
                     shut(0.5f);
@@ -66,6 +68,7 @@ public class SingleBlindView extends AbsBlindedView {
         super.setBlindWidth(blindWidth);
         mLeftBlindAxisSentinelRelative = 0.5f - blindWidth;
         mRightBlindAxisSentinelRelative = 0.5f + blindWidth;
+        mLatchReleaseRelative = blindWidth * getLatchRelease();
     }
 
     @Override
@@ -110,46 +113,16 @@ public class SingleBlindView extends AbsBlindedView {
                 rememberBlindsDownParams(x, y);
                 break;
             case MotionEvent.ACTION_UP:
-                //  TODO difference?
+                finalizeTouchInteraction(x, y, true);
+                break;
             case MotionEvent.ACTION_CANCEL:
-                switch (mBlindsFlags & STATE_MASK) {
-                    case STATE_CLICK:
-                        int target = mBlindsFlags & TARGET_MASK;
-                        if (target == TARGET_BUTTON_L) {
-                            if (withinIcon(x, y, mDrawableLeft))
-                                performClick();
-                            break;
-                        } else if (target == TARGET_BUTTON_R) {
-                            if (withinIcon(x, y, mDrawableRight))
-                                performClick();
-                            break;
-                        } else if (target == TARGET_BLIND) {
-                            performClick();
-                            break;
-                        }
-                        throw new IllegalStateException("Illegal BlindView state on Click UP/CANCEL");
-                    case STATE_SLIDE:
-                        assert (mBlindsFlags & TARGET_MASK) == TARGET_BLIND : "onTouch::UP/CANCEL::SLIDE not the blind";
-                        if (leftSideOpen()) {
-                            float latchPos = mRightBlindAxisSentinelRelative - mLatchReleaseRelative;
-                            //mBlindAxisPositionRelative = mBlindAxisPositionRelative >= latchPos ? latchPos : 0.5f;
-                            shut(mBlindAxisPositionRelative >= latchPos ? latchPos : 0.5f);
-                        } else if (rightSideOpen()) {
-                            float latchPos = mLeftBlindAxisSentinelRelative + mLatchReleaseRelative;
-                            //mBlindAxisPositionRelative = mBlindAxisPositionRelative <= latchPos ? latchPos : 0.5f;
-                            shut(mBlindAxisPositionRelative <= latchPos ? latchPos : 0.5f);
-                        }
-                        //__refreshCorrectly();
-                        break;
-                    case STATE_NOTHING:
-                        break;
-                    default:
-                        throw new IllegalStateException("Illegal BlindView state on UP/CANCEL event");
-                }
-                mBlindsFlags = 0;
+                finalizeTouchInteraction(x, y, false);
                 break;
             case MotionEvent.ACTION_MOVE:
-                //  TODO    check staying within view rectangle (before or after conversion???)
+                if (outOfViewBounds(x, y)) {
+                    finalizeTouchInteraction(x, y, false);
+                    return false;
+                }
                 switch (mBlindsFlags & STATE_MASK) {
                     case STATE_CLICK:
                         int target = mBlindsFlags & TARGET_MASK;
@@ -159,7 +132,7 @@ public class SingleBlindView extends AbsBlindedView {
                         mBlindsFlags = (mBlindsFlags & ~STATE_MASK) | STATE_SLIDE;
                     case STATE_SLIDE:
                         if (slide(x))
-                            __refreshCorrectly();
+                            invalidate();
                         break;
                     case STATE_NOTHING:
                     default:
@@ -214,9 +187,48 @@ public class SingleBlindView extends AbsBlindedView {
         return oldPosition != mBlindAxisPositionRelative;
     }
 
+    private void finalizeTouchInteraction(float x, float y, boolean correctly) {
+        int target = mBlindsFlags & TARGET_MASK;
+        switch (mBlindsFlags & STATE_MASK) {
+            case STATE_CLICK:
+                if (!correctly)
+                    break;
+                if (target == TARGET_BUTTON_L) {
+                    if (withinIcon(x, y, mDrawableLeft))
+                        performClick();
+                    break;
+                }
+                if (target == TARGET_BUTTON_R) {
+                    if (withinIcon(x, y, mDrawableRight))
+                        performClick();
+                    break;
+                }
+                if (target == TARGET_BLIND) {
+                    performClick();
+                    break;
+                }
+                throw new IllegalStateException("Illegal BlindView state on finalizeTouch::Click");
+            case STATE_SLIDE:
+                assert target == TARGET_BLIND : "finalizeTouch::SLIDE not the blind";
+                if (leftSideOpen()) {
+                    float latchPos = mRightBlindAxisSentinelRelative - mLatchReleaseRelative;
+                    shut(mBlindAxisPositionRelative >= latchPos ? latchPos : 0.5f);
+                } else if (rightSideOpen()) {
+                    float latchPos = mLeftBlindAxisSentinelRelative + mLatchReleaseRelative;
+                    shut(mBlindAxisPositionRelative <= latchPos ? latchPos : 0.5f);
+                }
+                break;
+            case STATE_NOTHING:
+                break;
+            default:
+                throw new IllegalStateException("Illegal BlindView state on UP/CANCEL event");
+        }
+        mBlindsFlags = 0;
+    }
+
     private void shut(float position) {
         mBlindAxisPositionRelative = position;
-        __refreshCorrectly();
+        invalidate();
     }
 
     private void measureIcon(Drawable icon, boolean left) {     //    TODO remeasure with paddings and allowed frame size

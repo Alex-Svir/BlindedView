@@ -1,5 +1,6 @@
 package org.shurman.blindedview;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -52,7 +53,24 @@ public class BlindedView extends AbsBlindedView {
         mBlindsFlags = 0;
         mBlind = new Blind();
 
-        super.setOnClickListener(v -> {});//todo
+        super.setOnClickListener(v -> {
+            switch (mBlindsFlags & BUTTONS_MASK) {
+                case BUTTON_L:
+                    if (null != mOnBlindedItemClickListener)
+                        mOnBlindedItemClickListener.onBlindedItemClick(true);
+                    break;
+                case BUTTON_R:
+                    if (null != mOnBlindedItemClickListener)
+                        mOnBlindedItemClickListener.onBlindedItemClick(false);
+                    break;
+                case BUTTON_NONE:
+                    mMovingBlindPositionRelative = Float.NaN;
+                    invalidate();
+                    break;
+                default:
+                    throw new IllegalStateException("Illegal state at performClick()");
+            }
+        });
     }
 
     @Override
@@ -60,6 +78,8 @@ public class BlindedView extends AbsBlindedView {
         super.setBlindWidth(blindWidth);
         mLeftBlindBaseRelative = blindWidth;
         mRightBlindBaseRelative = 1 - blindWidth;
+        mLeftLatchRelative = mLeftBlindBaseRelative * (1 - getLatchRelease());
+        mRightLatchRelative = mRightBlindBaseRelative + blindWidth * getLatchRelease();
     }
 
     @Override
@@ -97,25 +117,7 @@ public class BlindedView extends AbsBlindedView {
     @Override
     public void setOnClickListener(@Nullable OnClickListener l) {}
 
-    @Override
-    public boolean performClick() {
-        switch (mBlindsFlags & BUTTONS_MASK) {
-            case BUTTON_L:
-                l("Button Left callback");//todo
-                break;
-            case BUTTON_R:
-                l("Button Right callback");//todo
-                break;
-            case BUTTON_NONE:
-                mMovingBlindPositionRelative = Float.NaN;
-                __refreshCorrectly();
-                break;
-            default:
-                throw new IllegalStateException("Illegal state at performClick()");
-        }
-        return super.performClick();
-    }
-
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         float x = event.getX();
@@ -125,64 +127,32 @@ public class BlindedView extends AbsBlindedView {
                 rememberBlindsDownParams(x, y);
                 break;
             case MotionEvent.ACTION_UP:
-                //  TODO difference?
+                finalizeTouchInteraction(x, y, true);
+                break;
             case MotionEvent.ACTION_CANCEL:
-                switch (mBlindsFlags & STATE_MASK) {
-                    case STATE_CLICK:
-                        int buttonsMasked = mBlindsFlags & BUTTONS_MASK;
-                        assert buttonsMasked != BUTTONS_MASK : "Illegal BlindView state on Click UP/CANCEL";
-                        if (buttonsMasked == BUTTON_L && !withinIcon(x, y, mDrawableLeft)) {
-                            break;
-                        }
-                        if (buttonsMasked == BUTTON_R && !withinIcon(x, y, mDrawableRight)) {
-                            break;
-                        }
-                        if (buttonsMasked == BUTTON_NONE && (mBlindsFlags & BLINDS_MASK) == BLINDS_BRIDGE
-                                && (x < mScaledLeftBlindBase || x > mScaledRightBlindBase || y < 0 || y > mScaledViewHeight)) {
-                            break;
-                        }
-                        performClick();
-                        break;
-                    case STATE_SLIDE:
-                        switch (mBlindsFlags & BLINDS_MASK) {
-                            case BLIND_L:
-                                mMovingBlindPositionRelative = mMovingBlindPositionRelative < mLeftLatchRelative
-                                        ? Float.NaN : mLeftLatchRelative;
-                                break;
-                            case BLIND_R:
-                                mMovingBlindPositionRelative = mMovingBlindPositionRelative > mRightLatchRelative
-                                        ? Float.NaN : mRightLatchRelative;
-                                break;
-                            default:
-                                throw new IllegalStateException("Illegal blinds configuration on UP/CANCEL sliding");
-                        }
-                        __refreshCorrectly();
-                        break;
-                    case STATE_NOTHING:
-                        break;
-                    default:
-                        throw new IllegalStateException("Illegal BlindView state on UP/CANCEL event");
-                }
-                mBlindsFlags = 0;
+                finalizeTouchInteraction(x, y, false);
                 break;
             case MotionEvent.ACTION_MOVE:
-                //  TODO    check staying within view rectangle (before or after conversion???)
+                if (outOfViewBounds(x, y)) {
+                    finalizeTouchInteraction(x, y, false);
+                    return false;
+                }
                 switch (mBlindsFlags & STATE_MASK) {
                     case STATE_CLICK:
-                        int masked = mBlindsFlags & BLINDS_MASK;
-                        if (masked == BLINDS_MASK) throw new IllegalStateException("Illegal BlindView state: both blinds selected");
+                        int blindsMasked = mBlindsFlags & BLINDS_MASK;
+                        assert blindsMasked != BLINDS_MASK : "Illegal BlindView state: both blinds selected";
                         if (underConversionThreshold(x, y)) break;
-                        if (masked == 0) break;
+                        if (blindsMasked == BLINDS_BRIDGE) break;
                         mBlindsFlags = (mBlindsFlags & ~STATE_MASK) | STATE_SLIDE;
-                        if (masked == BLIND_L && rightBlindOpen()) {
+                        if (blindsMasked == BLIND_L && rightBlindOpen()) {
                             mMovingBlindPositionRelative = 0f;
                             slideLeftBlind(x);
-                            __refreshCorrectly();
+                            invalidate();
                             break;
-                        } else if (masked == BLIND_R && leftBlindOpen()) {
+                        } else if (blindsMasked == BLIND_R && leftBlindOpen()) {
                             mMovingBlindPositionRelative = 1f;
                             slideRightBlind(x);
-                            __refreshCorrectly();
+                            invalidate();
                             break;
                         }
                     case STATE_SLIDE:
@@ -198,7 +168,7 @@ public class BlindedView extends AbsBlindedView {
                                 throw new IllegalStateException("Illegal BlindedView moving state; pos" + mMovingBlindPositionRelative);
                         }
                         if (mMovingBlindPositionRelative != oldPos) {
-                            __refreshCorrectly();
+                            invalidate();
                         }
                         break;
                     case STATE_NOTHING:
@@ -293,6 +263,47 @@ public class BlindedView extends AbsBlindedView {
         mRefPoint.x = x;
     }
 
+    private void finalizeTouchInteraction(float x, float y, boolean correctly) {
+        int blindsMasked = mBlindsFlags & BLINDS_MASK;
+        assert blindsMasked != BLINDS_MASK : "Illegal BlindedView state at finalizeTouch: both blinds selected";
+        switch (mBlindsFlags & STATE_MASK) {
+            case STATE_CLICK:
+                if (!correctly) break;
+                int buttonsMasked = mBlindsFlags & BUTTONS_MASK;
+                assert buttonsMasked != BUTTONS_MASK : "Illegal BlindedView state at finalizeTouch: both buttons selected";
+                if (buttonsMasked == BUTTON_L) {
+                    if (!withinIcon(x, y, mDrawableLeft)) break;
+                } else if (buttonsMasked == BUTTON_R) {
+                    if(!withinIcon(x, y, mDrawableRight)) break;
+                } else if (blindsMasked == BLINDS_BRIDGE
+                        && (x < mScaledLeftBlindBase || x > mScaledRightBlindBase || y < 0 || y > mScaledViewHeight)) {
+                    break;
+                }
+                performClick();
+                break;
+            case STATE_SLIDE:
+                switch (blindsMasked) {
+                    case BLIND_L:
+                        mMovingBlindPositionRelative = mMovingBlindPositionRelative < mLeftLatchRelative
+                                ? Float.NaN : mLeftLatchRelative;
+                        break;
+                    case BLIND_R:
+                        mMovingBlindPositionRelative = mMovingBlindPositionRelative > mRightLatchRelative
+                                ? Float.NaN : mRightLatchRelative;
+                        break;
+                    default:
+                        throw new IllegalStateException("Illegal blinds configuration at finalizeTouch");
+                }
+                invalidate();
+                break;
+            case STATE_NOTHING:
+                break;
+            default:
+                throw new IllegalStateException("Illegal BlindView state on finalizing touch");
+        }
+        mBlindsFlags = 0;
+    }
+
     private void measureIcon(Drawable icon, boolean left) {     //    TODO remeasure with paddings and allowed frame size
         if (icon == null) return;
         int iw = icon.getIntrinsicWidth();
@@ -309,9 +320,7 @@ public class BlindedView extends AbsBlindedView {
 
     private boolean blindsClosed() { return Float.isNaN(mMovingBlindPositionRelative); }
     private boolean leftBlindOpen() { return mMovingBlindPositionRelative <= mLeftBlindBaseRelative; }
-    //private boolean leftBlindClosed() { return Float.isNaN(mMovingBlindPositionRelative) || mMovingBlindPositionRelative >= mRightBlindBaseRelative; }
     private boolean rightBlindOpen() { return mMovingBlindPositionRelative >= mRightBlindBaseRelative; }
-    //private boolean rightBlindClosed() { return Float.isNaN(mMovingBlindPositionRelative) || mMovingBlindPositionRelative <= mLeftBlindBaseRelative; }
 //==============================================================================================================
     private class Blind extends Drawable {
         private static final float TEXT_SIZE = 24f;

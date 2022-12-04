@@ -10,10 +10,15 @@ import android.util.Log;
 import android.view.View;
 
 public class AbsBlindedView extends View {
+    interface OnBlindedItemClickListener {
+        void onBlindedItemClick(boolean left);
+    }
+
     private static final float CONVERSION_THRESHOLD = 20f;               //  todo
     private static final float DEFAULT_BLIND_WIDTH = 0.4f;
     private static final float DEFAULT_LATCH_RELEASE = 0.3f;
 
+    protected OnBlindedItemClickListener mOnBlindedItemClickListener;
     //attrs
     protected Drawable mDrawableLeft;
     protected Drawable mDrawableRight;
@@ -65,14 +70,19 @@ public class AbsBlindedView extends View {
         mScaledViewHeight = getMeasuredHeight();
     }
 
+    public void setOnBlindedItemClickListener(OnBlindedItemClickListener l) {
+        mOnBlindedItemClickListener = l;
+    }
+
     protected boolean underConversionThreshold(float x, float y) {
         float dx = x - mRefPoint.x;
         float dy = y - mRefPoint.y;
         return Math.sqrt(dx * dx + dy * dy) < CONVERSION_THRESHOLD;        //TODO any direction?
     }
 
-    protected void __refreshCorrectly() {
-        invalidate();
+    protected boolean outOfViewBounds(float x, float y) {
+        //return 0 <= x && x <= mScaledViewWidth && 0 <= y && y <= mScaledViewHeight;
+        return x < 0 || x > mScaledViewWidth || y < 0 || y > mScaledViewHeight;
     }
 
     protected static boolean withinIcon(float x, float y, Drawable icon) {
