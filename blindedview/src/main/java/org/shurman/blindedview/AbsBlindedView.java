@@ -9,21 +9,24 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
 
-public class AbsBlindedView extends View {
-    interface OnBlindedItemClickListener {
-        void onBlindedItemClick(boolean left);
+public abstract class AbsBlindedView extends View {
+    public interface OnInteractionListener {
+        void onBlindedItemClick(View view, boolean left);
+        void onBlindClick(View view);
+        void onBlindSlideCompleted(View view);
     }
 
     private static final float CONVERSION_THRESHOLD = 20f;               //  todo
     private static final float DEFAULT_BLIND_WIDTH = 0.4f;
     private static final float DEFAULT_LATCH_RELEASE = 0.3f;
 
-    protected OnBlindedItemClickListener mOnBlindedItemClickListener;
+    protected OnInteractionListener mOnInteractionListener;
     //attrs
     protected Drawable mDrawableLeft;
     protected Drawable mDrawableRight;
     private float mBlindWidth;
     private float mLatchRelease;
+    protected CharSequence mText;
     //measured
     protected int mScaledViewWidth;
     protected int mScaledViewHeight;
@@ -46,7 +49,11 @@ public class AbsBlindedView extends View {
         setLatchRelease(latchRelease);
 
         mRefPoint = new PointF();
+
+        mText = "";        //  todo
     }
+
+    public abstract void shut();
 
     public void setBlindWidth(float blindWidth) {
         assert 0f < blindWidth && blindWidth <= 0.5f : "Illegal blindWidth";
@@ -62,6 +69,8 @@ public class AbsBlindedView extends View {
     public Drawable getDrawableLeft() { return mDrawableLeft; }
     public void setDrawableRight(Drawable d) { mDrawableRight = d; }
     public Drawable getDrawableRight() { return mDrawableRight; }
+    public void setText(CharSequence text) { mText = text.subSequence(0, text.length()); }  //  todo
+    public CharSequence getText() { return mText.subSequence(0, mText.length()); }  //  todo
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
@@ -70,8 +79,8 @@ public class AbsBlindedView extends View {
         mScaledViewHeight = getMeasuredHeight();
     }
 
-    public void setOnBlindedItemClickListener(OnBlindedItemClickListener l) {
-        mOnBlindedItemClickListener = l;
+    public void setOnInteractionListener(OnInteractionListener l) {
+        mOnInteractionListener = l;
     }
 
     protected boolean underConversionThreshold(float x, float y) {

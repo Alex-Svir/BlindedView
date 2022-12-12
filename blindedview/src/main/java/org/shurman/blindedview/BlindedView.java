@@ -56,16 +56,18 @@ public class BlindedView extends AbsBlindedView {
         super.setOnClickListener(v -> {
             switch (mBlindsFlags & BUTTONS_MASK) {
                 case BUTTON_L:
-                    if (null != mOnBlindedItemClickListener)
-                        mOnBlindedItemClickListener.onBlindedItemClick(true);
+                    if (null != mOnInteractionListener)
+                        mOnInteractionListener.onBlindedItemClick(this, true);
                     break;
                 case BUTTON_R:
-                    if (null != mOnBlindedItemClickListener)
-                        mOnBlindedItemClickListener.onBlindedItemClick(false);
+                    if (null != mOnInteractionListener)
+                        mOnInteractionListener.onBlindedItemClick(this, false);
                     break;
                 case BUTTON_NONE:
                     mMovingBlindPositionRelative = Float.NaN;
                     invalidate();
+                    if (null != mOnInteractionListener)
+                        mOnInteractionListener.onBlindClick(this);
                     break;
                 default:
                     throw new IllegalStateException("Illegal state at performClick()");
@@ -87,6 +89,12 @@ public class BlindedView extends AbsBlindedView {
         super.setLatchRelease(latchRelease);
         mLeftLatchRelative = mLeftBlindBaseRelative * (1 - latchRelease);
         mRightLatchRelative = mRightBlindBaseRelative + getBlindWidth() * latchRelease;
+    }
+
+    @Override
+    public void setText(CharSequence text) {
+        super.setText(text);
+        mBlind.setText();
     }
 
     @Override
@@ -125,6 +133,7 @@ public class BlindedView extends AbsBlindedView {
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 rememberBlindsDownParams(x, y);
+                //if (mOnInteractionListener != null) mOnInteractionListener.onStartInteraction();
                 break;
             case MotionEvent.ACTION_UP:
                 finalizeTouchInteraction(x, y, true);
@@ -295,6 +304,8 @@ public class BlindedView extends AbsBlindedView {
                         throw new IllegalStateException("Illegal blinds configuration at finalizeTouch");
                 }
                 invalidate();
+                if (null != mOnInteractionListener)
+                    mOnInteractionListener.onBlindSlideCompleted(this);
                 break;
             case STATE_NOTHING:
                 break;
@@ -302,6 +313,12 @@ public class BlindedView extends AbsBlindedView {
                 throw new IllegalStateException("Illegal BlindView state on finalizing touch");
         }
         mBlindsFlags = 0;
+    }
+
+    @Override
+    public void shut() {
+        mMovingBlindPositionRelative = Float.NaN;
+        invalidate();
     }
 
     private void measureIcon(Drawable icon, boolean left) {     //    TODO remeasure with paddings and allowed frame size
@@ -325,8 +342,8 @@ public class BlindedView extends AbsBlindedView {
     private class Blind extends Drawable {
         private static final float TEXT_SIZE = 24f;
         private final Paint mPaint;
-        private final Paint mText;
-        private  String text = "Super-Duper View!!!";
+        private final Paint mPaintText;
+        //private  String text = "Super-Duper View!!!";
         private float mTextOffsetFromLeft;
         private float mTextOffsetFromRight;
         private float mTextBaseline;
@@ -335,21 +352,21 @@ public class BlindedView extends AbsBlindedView {
             mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             mPaint.setColor(Color.BLUE);
 
-            mText = new Paint();
-            mText.setColor(Color.YELLOW);
-            mText.setStyle(Paint.Style.FILL_AND_STROKE);
-            mText.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, TEXT_SIZE, getResources().getDisplayMetrics()));
+            mPaintText = new Paint();
+            mPaintText.setColor(Color.YELLOW);
+            mPaintText.setStyle(Paint.Style.FILL_AND_STROKE);
+            mPaintText.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, TEXT_SIZE, getResources().getDisplayMetrics()));
 
-            setText(text);
+            setText(/*text*/);
         }
 
-        public void setText(String text) {
-            this.text = text;
+        public void setText(/*String text*/) {
+            //this.text = text;
             measureText();
         }
 
         public void setTextSize(float sp) {
-            mText.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, getResources().getDisplayMetrics()));
+            mPaintText.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, getResources().getDisplayMetrics()));
             measureText();
         }
 
@@ -358,8 +375,9 @@ public class BlindedView extends AbsBlindedView {
         }
 
         private void measureText() {
+            String text = mText.toString();
             Rect frame = new Rect();
-            mText.getTextBounds(text, 0, text.length(), frame);
+            mPaintText.getTextBounds(text, 0, text.length(), frame);
             mTextOffsetFromLeft = (mScaledViewWidth - frame.width()) / 2f - frame.left;
             mTextOffsetFromRight = mScaledViewWidth - mTextOffsetFromLeft;
             mTextBaseline = (mScaledViewHeight - frame.height()) / 2f - frame.top;
@@ -367,23 +385,24 @@ public class BlindedView extends AbsBlindedView {
 
         @Override
         public void draw(@NonNull Canvas canvas) {
+            String text = mText.toString();
             if (blindsClosed()) {
                 canvas.drawColor(Color.BLUE);
 
                 canvas.drawText(text, 0, text.length(),
                         mTextOffsetFromLeft,
                         mTextBaseline,
-                        mText);
+                        mPaintText);
             }
             else if (leftBlindOpen()) {
                 float left = mMovingBlindPositionRelative * mScaledViewWidth;
                 canvas.drawRect(left, 0, mScaledViewWidth, mScaledViewHeight, mPaint);
-                canvas.drawText(text, left + mTextOffsetFromLeft, mTextBaseline, mText);
+                canvas.drawText(text, left + mTextOffsetFromLeft, mTextBaseline, mPaintText);
             }
             else if (rightBlindOpen()) {
                 float right = mMovingBlindPositionRelative * mScaledViewWidth;
                 canvas.drawRect(0, 0, right, mScaledViewHeight, mPaint);
-                canvas.drawText(text, right - mTextOffsetFromRight, mTextBaseline, mText);
+                canvas.drawText(text, right - mTextOffsetFromRight, mTextBaseline, mPaintText);
             }
             else throw new IllegalStateException("Illegal BlindedView state at onDraw");
         }
