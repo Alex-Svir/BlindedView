@@ -5,5 +5,16 @@
         <attr name="latchRelease" format="float"/>
         <attr name="drawableLeft" format="reference"/>
         <attr name="drawableRight" format="reference"/>
+
+        <attr name="text" format="string"/>
+        <attr name="fontSize" format="dimension"/>
+        <attr name="fontColor" format="color"/>
+        <attr name="fontTypeface" format="flags">
+            <flag name="normal" value="0"/>
+            <flag name="bold" value="1"/>
+            <flag name="italic" value="2"/>
+        </attr>
+
+        <attr name="blindBack" format="reference"/>
     </declare-styleable>
 </resources>
